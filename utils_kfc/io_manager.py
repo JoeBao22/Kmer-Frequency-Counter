@@ -94,7 +94,7 @@ def output_content(args, output_folder, frequency, species_name):
     # Output as a format of cvtree
     count_none_zero = len(frequency)
     inner_product = sum([item[2] ** 2 for item in frequency])  # item[2]: value
-    content = "{}\n{}\n{}\n".format(args.length, inner_product, count_none_zero)
+    content = "{}\n{}\n{}\n".format(args.n, inner_product, count_none_zero)
     for item in frequency:
         content += "{} {}\n".format(item[1], item[2])  # item[1]: key, item[2]: value
     create_dir(output_folder)

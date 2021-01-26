@@ -1,12 +1,8 @@
 import argparse
 import os
 import multiprocessing
-from utils_kfc import io_manager, kmer_statistics
-
-
-# update 0920:
-# rename for output folder
-# check parameter before calculating
+from utils_kfc import io_manager
+from utils_kfc.kmer_statistics import *
 
 
 def check_parameters(args):
@@ -50,10 +46,14 @@ def check_parameters(args):
         exit(1)
 
 
-def calculate(args, name, output_folder, kmer_statistics):
+def kmer_freq_update(temp_freq, new_item):
+    temp_freq[new_item] = temp_freq.get(new_item, 0) + 1
+
+    
+def calculate(name, output_folder, kmer_statistics):
     global logging
     global error
-    all_file_path = [os.path.join(args.file_dir, "{}.{}".format(name, suffix)) for suffix in ["fa","fna","ffn","fsa","fasta"]]
+    all_file_path = [os.path.join(kmer_statistics.file_dir, "{}.{}".format(name, suffix)) for suffix in ["fa","fna","ffn","fsa","fasta"]]
     chosen_file_path = None  # choose the first file that satisfies certain format
     for file_path in all_file_path:
         if os.path.exists(file_path):
@@ -65,58 +65,61 @@ def calculate(args, name, output_folder, kmer_statistics):
     logging.write("------extracting sequences from the given path {} ------\n".format(chosen_file_path))
 
     seq_dict = io_manager.extract_dict(chosen_file_path)
-    queue = [{} for _ in range(args.core)]  # allocate sequences to different cores
-    thread_pool = multiprocessing.Pool(args.core)
-    thread_counter = 0
-    for seq_key, seq_value in seq_dict.items():
-        chosen_core = thread_counter % args.core
-        queue[chosen_core][seq_key] = seq_value
-        thread_counter += 1
-    # logging.write("------tasks on each core:------\n")
-    # for i in range(args.core):
-    #     logging.write("core #{}\n".format(i + 1))
-    #     logging.write(str(queue[i]) + "\n")
-    kmer_statistics_function = kmer_statistics.get_freq_function
-    freq_count = thread_pool.map(kmer_statistics_function, queue)
-    logging.write("------counting result on each core------\n")
-    for i in range(args.core):
-        logging.write("core #{}\n".format(i + 1))
-        if args.subtraction:
-            logging.write("long dict: \n")
-            logging.write("{:<.50}...\n".format(str(freq_count[i][0].get_freq())))
-            logging.write("mid dict 1: \n")
-            logging.write("{:<.50}...\n".format(str(freq_count[i][1].get_freq())))
-            logging.write("mid dict 2: \n")
-            logging.write("{:<.50}...\n".format(str(freq_count[i][2].get_freq())))
-            logging.write("short dict : \n")
-            logging.write("{:<.50}...\n".format(str(freq_count[i][3].get_freq())))
-        else:
-            logging.write("{:<.50}...\n".format(str(freq_count[i][0].get_freq())))
-    thread_pool.close()
-    thread_pool.join()
-
-    logging.write("------gross frequency of all sequences and vector representation: ------\n")
-    gross_frequency = kmer_statistics.gross_frequency(freq_count)  # returns a list
-    vector_frequency = kmer_statistics.vector_calculator(gross_frequency)
-
-    if args.subtraction:
-        logging.write("long dict: \n")
-        logging.write("{:<.50}...\n".format(str(gross_frequency[0].get_frequency_dict())))
-        logging.write("mid dict 1: \n")
-        logging.write("{:<.50}...\n".format(str(gross_frequency[1].get_frequency_dict())))
-        logging.write("mid dict 2: \n")
-        logging.write("{:<.50}...\n".format(str(gross_frequency[2].get_frequency_dict())))
-        logging.write("short dict: \n")
-        logging.write("{:<.50}...\n".format(str(gross_frequency[3].get_frequency_dict())))
+    pool = multiprocessing.Pool(kmer_statistics.core)
+    if kmer_statistics.subtraction:
+        freq_list_return = [multiprocessing.Manager().dict() for _ in range(4)]
+        for seq_key, seq_value in seq_dict.items():
+            modified_seq_value = modify_sequence(seq_value)
+            for start_index in range(len(modified_seq_value) - kmer_statistics.k + 1):
+                sub_seq = modified_seq_value[start_index: start_index + kmer_statistics.k]
+                if kmer_statistics.space:
+                    sub_seq = ''.join([sub_seq[x] for x in kmer_statistics.loc])
+                if no_deviation(sub_seq):
+                    mid_seq1, mid_seq2 = sub_seq[: -1], sub_seq[1: ]
+                    short_seq = sub_seq[1:-1]
+                    if kmer_statistics.combine:
+                        sub_seq = get_smaller(sub_seq)
+                        mid_seq1 = get_smaller(mid_seq1)
+                        mid_seq2 = get_smaller(mid_seq2)
+                        short_seq = get_smaller(short_seq)
+                    seq_list = [sub_seq, mid_seq1, mid_seq2, short_seq]
+                    for i in range(4):
+                        pool.apply_async(kmer_freq_update, args=(freq_list_return[i], seq_list[i]))
     else:
-        logging.write("{:<.50}...\n".format(str(gross_frequency[0].get_frequency_dict())))
+        freq_list_return = [multiprocessing.Manager().dict()]
+        for (seq_key, seq_value) in seq_dict.items():
+            modified_seq_value = modify_sequence(seq_value)
+            for start_index in range(len(modified_seq_value) - kmer_statistics.k + 1):
+                sub_seq = modified_seq_value[start_index: start_index + kmer_statistics.k]
+                if kmer_statistics.space:
+                    sub_seq = ''.join([sub_seq[x] for x in kmer_statistics.loc])
+                if kmer_statistics.combine:
+                    sub_seq = get_smaller(sub_seq)
+                if no_deviation(sub_seq):
+                    pool.apply_async(kmer_freq_update, args=(freq_list_return[0], sub_seq))
+    pool.close()
+    pool.join()
+    print(freq_list_return[0])
+    vector_frequency = vector_calculator(freq_list_return, kmer_statistics)
+
+    if kmer_statistics.subtraction:
+        logging.write("long dict: \n")
+        logging.write("{:<.50}...\n".format(str(freq_list_return[0])))
+        logging.write("mid dict 1: \n")
+        logging.write("{:<.50}...\n".format(str(freq_list_return[1])))
+        logging.write("mid dict 2: \n")
+        logging.write("{:<.50}...\n".format(str(freq_list_return[2])))
+        logging.write("short dict: \n")
+        logging.write("{:<.50}...\n".format(str(freq_list_return[3])))
+    else:
+        logging.write("{:<.50}...\n".format(str(freq_list_return[0])))
 
     for item in vector_frequency[:min(4, len(vector_frequency))]:
         logging.write("key: {0}\tencoded key: {1}\tvalue: {2}\n".format(
             item[0], item[1], item[2]))
 
     logging.write("------saving result for {}: ------\n".format(name))
-    io_manager.output_content(args, output_folder, vector_frequency, name)
+    io_manager.output_content(kmer_statistics, output_folder, vector_frequency, name)
 
 
 if __name__ == '__main__':
@@ -131,7 +134,7 @@ if __name__ == '__main__':
                         help="the length of spaced word, N>1")
     parser.add_argument('--new_encoder', action="store_true",
                         help="whether to use the new encoder-decoder with base 5 or " \
-                             "the original one with base 4")
+                        "the original one with base 4")
     parser.add_argument("--subtraction", action="store_true",
                         help="whether to do background subtraction or not")
     parser.add_argument("--frequency", action="store_true",
@@ -144,23 +147,23 @@ if __name__ == '__main__':
                         help="the interval length of degenerated Kmer, sample every (d+1) positions. d>0 if spaced")
     parser.add_argument('--direction', type=int, default=0,
                         help="shift of one position in pattern. "
-                             "0: None, 1: to the right of the original sample position, -1: to the left")
+                            "0: None, 1: to the right of the original sample position, -1: to the left")
     parser.add_argument('--position', type=int, default=0,
                         help="the position of shift, count from 1. "
-                             "eg: 1, 2, 3, 4...9 ; sampled: 1, 3, 5, 7, 9"
-                             "if position = 5 and direction = 1:"
-                             "shifted: 1, 3, 6, 7, 9")
+                            "eg: 1, 2, 3, 4...9 ; sampled: 1, 3, 5, 7, 9"
+                            "if position = 5 and direction = 1:"
+                            "shifted: 1, 3, 6, 7, 9")
 
     args = parser.parse_args()
     names, output_folder, logging, error = io_manager.output_error_logging_config(args)
     check_parameters(args)
     print("------Arguments:------\n{}".format(args))
     logging.write("------ARGUMENTS:------\n{}\n".format(args))
-    kmer_tool = kmer_statistics.KmerStatistics(args, logging, error)
+    kmer_tool = ArgumentManager(args)
     for name in names:
         print("calculating {}".format(name))
         logging.write("CALCULATING {}\n".format(name.upper()))
-        calculate(args, name, output_folder, kmer_tool)
+        calculate(name, output_folder, kmer_tool)
         logging.write("\n")
     logging.close()
 
