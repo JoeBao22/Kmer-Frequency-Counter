@@ -1,0 +1,25 @@
+TEST1:basic
+python kfc.py --file_dir input_folder --core 2 --length 4 --name_file names.txt
+TEST2: subtraction without frequency
+python kfc.py --file_dir input_folder  --core 2 --length 4 --name_file names.txt --subtraction
+TEST3: subtraction with frequency
+python kfc.py --file_dir input_folder  --core 2 --length 4 --name_file names.txt --subtraction --frequency
+TEST4: new encoder/decoder
+python kfc.py --file_dir input_folder  --core 2 --length 4 --name_file names.txt --new_encoder
+TEST5: no subtraction with frequency
+python kfc.py --file_dir input_folder  --core 2 --length 4 --name_file names.txt --frequency
+TEST6: combine
+python kfc.py --file_dir input_folder  --core 2 --length 2 --name_file names.txt
+python kfc.py --file_dir input_folder  --core 2 --length 2 --name_file names.txt --combine
+TEST7 space
+python kfc.py --file_dir input_folder  --core 2 --length 3 --name_file names.txt --space --interval 1
+TEST8 space direction without position
+python kfc.py --file_dir input_folder  --core 2 --length 3 --name_file names.txt --space --interval 1 --direction 1
+python kfc.py --file_dir input_folder  --core 2 --length 3 --name_file names.txt --space --interval 1 --direction -1
+TEST9 choose the first or the last position of the sampled arr
+python kfc.py --file_dir input_folder  --core 2 --length 3 --name_file names.txt --space --interval 1 --direction -1 --position 1
+python kfc.py --file_dir input_folder  --core 2 --length 3 --name_file names.txt --space --interval 1 --direction -1 --position 2
+python kfc.py --file_dir input_folder  --core 2 --length 3 --name_file names.txt --space --interval 1 --direction -1 --position 3
+TEST10 subtraction manual calculation
+python kfc.py --file_dir input_folder  --core 2 --length 4 --name_file names.txt --subtraction --frequency
+
