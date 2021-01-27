@@ -96,16 +96,16 @@ def calculate(name, output_folder, kmer_statistics):
     manager = multiprocessing.Manager()
     if kmer_statistics.subtraction:
         freq_list_return = [manager.dict() for _ in range(4)]  # use the same manager
-        for seq_key, seq_value in seq_dict.items():
-            pool.apply_async(kmer_freq_subtraction_update, 
-                            args=(freq_list_return, seq_value, 
-                                kmer_statistics.k, kmer_statistics.space, 
-                                kmer_statistics.combine, kmer_statistics.loc))
+        function_to_call = kmer_freq_subtraction_update
     else:
         freq_list_return = [manager.dict()]
-        for (seq_key, seq_value) in seq_dict.items():
-            pool.apply_async(kmer_freq_update, 
-                            args=(freq_list_return, seq_value, 
+        function_to_call = kmer_freq_update
+    for (seq_key, seq_value) in seq_dict.items():
+        for start_index in range(0, len(seq_value), 500000):
+            temp_seq = seq_value[max(0, start_index - kmer_statistics.k + 1): \
+                min(start_index + 500000, len(seq_value))]
+            pool.apply_async(function_to_call, 
+                            args=(freq_list_return, temp_seq, 
                                 kmer_statistics.k, kmer_statistics.space, 
                                 kmer_statistics.combine, kmer_statistics.loc))
     pool.close()
