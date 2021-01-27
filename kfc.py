@@ -46,10 +46,37 @@ def check_parameters(args):
         exit(1)
 
 
-def kmer_freq_update(temp_freq, new_item):
-    temp_freq[new_item] = temp_freq.get(new_item, 0) + 1
+def kmer_freq_update(freq_list, seq, k, space, combine, loc):
+    modified_seq_value = modify_sequence(seq)
+    for start_index in range(len(modified_seq_value) - k + 1):
+        sub_seq = modified_seq_value[start_index: start_index + k]
+        if space:
+            sub_seq = ''.join([sub_seq[x] for x in loc])
+        if combine:
+            sub_seq = get_smaller(sub_seq)
+        if no_deviation(sub_seq):
+            freq_list[0][sub_seq] = freq_list[0].get(sub_seq, 0) + 1
 
+
+def kmer_freq_subtraction_update(freq_list, seq, k, space, combine, loc):
+    modified_seq_value = modify_sequence(seq)
+    for start_index in range(len(modified_seq_value) - k + 1):
+        sub_seq = modified_seq_value[start_index: start_index + k]
+        if space:
+            sub_seq = ''.join([sub_seq[x] for x in loc])
+        if no_deviation(sub_seq):
+            mid_seq1, mid_seq2 = sub_seq[: -1], sub_seq[1: ]
+            short_seq = sub_seq[1:-1]
+            if combine:
+                sub_seq = get_smaller(sub_seq)
+                mid_seq1 = get_smaller(mid_seq1)
+                mid_seq2 = get_smaller(mid_seq2)
+                short_seq = get_smaller(short_seq)
+            seq_list = [sub_seq, mid_seq1, mid_seq2, short_seq]
+            for i in range(4):
+                freq_list[i][seq_list[i]] = freq_list[i].get(seq_list[i], 0) + 1
     
+
 def calculate(name, output_folder, kmer_statistics):
     global logging
     global error
@@ -66,40 +93,26 @@ def calculate(name, output_folder, kmer_statistics):
 
     seq_dict = io_manager.extract_dict(chosen_file_path)
     pool = multiprocessing.Pool(kmer_statistics.core)
+    manager = multiprocessing.Manager()
     if kmer_statistics.subtraction:
-        freq_list_return = [multiprocessing.Manager().dict() for _ in range(4)]
+        freq_list_return = [manager.dict() for _ in range(4)]  # use the same manager
         for seq_key, seq_value in seq_dict.items():
-            modified_seq_value = modify_sequence(seq_value)
-            for start_index in range(len(modified_seq_value) - kmer_statistics.k + 1):
-                sub_seq = modified_seq_value[start_index: start_index + kmer_statistics.k]
-                if kmer_statistics.space:
-                    sub_seq = ''.join([sub_seq[x] for x in kmer_statistics.loc])
-                if no_deviation(sub_seq):
-                    mid_seq1, mid_seq2 = sub_seq[: -1], sub_seq[1: ]
-                    short_seq = sub_seq[1:-1]
-                    if kmer_statistics.combine:
-                        sub_seq = get_smaller(sub_seq)
-                        mid_seq1 = get_smaller(mid_seq1)
-                        mid_seq2 = get_smaller(mid_seq2)
-                        short_seq = get_smaller(short_seq)
-                    seq_list = [sub_seq, mid_seq1, mid_seq2, short_seq]
-                    for i in range(4):
-                        pool.apply_async(kmer_freq_update, args=(freq_list_return[i], seq_list[i]))
+            pool.apply_async(kmer_freq_subtraction_update, 
+                            args=(freq_list_return, seq_value, 
+                                kmer_statistics.k, kmer_statistics.space, 
+                                kmer_statistics.combine, kmer_statistics.loc))
     else:
-        freq_list_return = [multiprocessing.Manager().dict()]
+        freq_list_return = [manager.dict()]
         for (seq_key, seq_value) in seq_dict.items():
-            modified_seq_value = modify_sequence(seq_value)
-            for start_index in range(len(modified_seq_value) - kmer_statistics.k + 1):
-                sub_seq = modified_seq_value[start_index: start_index + kmer_statistics.k]
-                if kmer_statistics.space:
-                    sub_seq = ''.join([sub_seq[x] for x in kmer_statistics.loc])
-                if kmer_statistics.combine:
-                    sub_seq = get_smaller(sub_seq)
-                if no_deviation(sub_seq):
-                    pool.apply_async(kmer_freq_update, args=(freq_list_return[0], sub_seq))
+            pool.apply_async(kmer_freq_update, 
+                            args=(freq_list_return, seq_value, 
+                                kmer_statistics.k, kmer_statistics.space, 
+                                kmer_statistics.combine, kmer_statistics.loc))
     pool.close()
     pool.join()
-    print(freq_list_return[0])
+
+    
+
     vector_frequency = vector_calculator(freq_list_return, kmer_statistics)
 
     if kmer_statistics.subtraction:
