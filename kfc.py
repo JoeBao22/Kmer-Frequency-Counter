@@ -46,35 +46,37 @@ def check_parameters(args):
         exit(1)
 
 
-def kmer_freq_update(freq_list, seq, k, space, combine, loc):
-    modified_seq_value = modify_sequence(seq)
-    for start_index in range(len(modified_seq_value) - k + 1):
-        sub_seq = modified_seq_value[start_index: start_index + k]
-        if space:
-            sub_seq = ''.join([sub_seq[x] for x in loc])
-        if combine:
-            sub_seq = get_smaller(sub_seq)
-        if no_deviation(sub_seq):
-            freq_list[0][sub_seq] = freq_list[0].get(sub_seq, 0) + 1
-
-
-def kmer_freq_subtraction_update(freq_list, seq, k, space, combine, loc):
-    modified_seq_value = modify_sequence(seq)
-    for start_index in range(len(modified_seq_value) - k + 1):
-        sub_seq = modified_seq_value[start_index: start_index + k]
-        if space:
-            sub_seq = ''.join([sub_seq[x] for x in loc])
-        if no_deviation(sub_seq):
-            mid_seq1, mid_seq2 = sub_seq[: -1], sub_seq[1: ]
-            short_seq = sub_seq[1:-1]
+def kmer_freq_update(freq_list, seq_list, k, space, combine, loc):
+    for seq in seq_list:
+        modified_seq_value = modify_sequence(seq)
+        for start_index in range(len(modified_seq_value) - k + 1):
+            sub_seq = modified_seq_value[start_index: start_index + k]
+            if space:
+                sub_seq = ''.join([sub_seq[x] for x in loc])
             if combine:
                 sub_seq = get_smaller(sub_seq)
-                mid_seq1 = get_smaller(mid_seq1)
-                mid_seq2 = get_smaller(mid_seq2)
-                short_seq = get_smaller(short_seq)
-            seq_list = [sub_seq, mid_seq1, mid_seq2, short_seq]
-            for i in range(4):
-                freq_list[i][seq_list[i]] = freq_list[i].get(seq_list[i], 0) + 1
+            if no_deviation(sub_seq):
+                freq_list[0][sub_seq] = freq_list[0].get(sub_seq, 0) + 1
+
+
+def kmer_freq_subtraction_update(freq_list, seq_list, k, space, combine, loc):
+    for seq in seq_list:
+        modified_seq_value = modify_sequence(seq)
+        for start_index in range(len(modified_seq_value) - k + 1):
+            sub_seq = modified_seq_value[start_index: start_index + k]
+            if space:
+                sub_seq = ''.join([sub_seq[x] for x in loc])
+            if no_deviation(sub_seq):
+                mid_seq1, mid_seq2 = sub_seq[: -1], sub_seq[1: ]
+                short_seq = sub_seq[1:-1]
+                if combine:
+                    sub_seq = get_smaller(sub_seq)
+                    mid_seq1 = get_smaller(mid_seq1)
+                    mid_seq2 = get_smaller(mid_seq2)
+                    short_seq = get_smaller(short_seq)
+                seq_list = [sub_seq, mid_seq1, mid_seq2, short_seq]
+                for i in range(4):
+                    freq_list[i][seq_list[i]] = freq_list[i].get(seq_list[i], 0) + 1
     
 
 def calculate(name, output_folder, kmer_statistics):
@@ -100,14 +102,18 @@ def calculate(name, output_folder, kmer_statistics):
     else:
         freq_list_return = [manager.dict()]
         function_to_call = kmer_freq_update
+    all_tasks = []
     for (seq_key, seq_value) in seq_dict.items():
         for start_index in range(0, len(seq_value), 500000):
             temp_seq = seq_value[max(0, start_index - kmer_statistics.k + 1): \
                 min(start_index + 500000, len(seq_value))]
-            pool.apply_async(function_to_call, 
-                            args=(freq_list_return, temp_seq, 
-                                kmer_statistics.k, kmer_statistics.space, 
-                                kmer_statistics.combine, kmer_statistics.loc))
+            all_tasks.append(temp_seq)
+    for i in range(kmer_statistics.core):
+        chosen_tasks = all_tasks[::kmer_statistics.core]
+        pool.apply_async(function_to_call, 
+                        args=(freq_list_return, chosen_tasks, 
+                            kmer_statistics.k, kmer_statistics.space, 
+                            kmer_statistics.combine, kmer_statistics.loc))
     pool.close()
     pool.join()
 
