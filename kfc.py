@@ -103,13 +103,14 @@ def calculate(name, output_folder, kmer_statistics):
         freq_list_return = [manager.dict()]
         function_to_call = kmer_freq_update
     all_tasks = []
+    segmentLen = 5000
     for (seq_key, seq_value) in seq_dict.items():
-        for start_index in range(0, len(seq_value), 500000):
+        for start_index in range(0, len(seq_value), segmentLen):
             temp_seq = seq_value[max(0, start_index - kmer_statistics.k + 1): \
-                min(start_index + 500000, len(seq_value))]
+                min(start_index + segmentLen, len(seq_value))]
             all_tasks.append(temp_seq)
     for i in range(kmer_statistics.core):
-        chosen_tasks = all_tasks[::kmer_statistics.core]
+        chosen_tasks = all_tasks[i::kmer_statistics.core]
         pool.apply_async(function_to_call, 
                         args=(freq_list_return, chosen_tasks, 
                             kmer_statistics.k, kmer_statistics.space, 
