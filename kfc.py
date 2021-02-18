@@ -79,69 +79,6 @@ def kmer_freq_subtraction_update(freq_list, seq_list, k, space, combine, loc):
                     freq_list[i][seq_list[i]] = freq_list[i].get(seq_list[i], 0) + 1
     
 
-def calculate(name, output_folder, kmer_statistics):
-    global logging
-    global error
-    all_file_path = [os.path.join(kmer_statistics.file_dir, "{}.{}".format(name, suffix)) for suffix in ["fa","fna","ffn","fsa","fasta"]]
-    chosen_file_path = None  # choose the first file that satisfies certain format
-    for file_path in all_file_path:
-        if os.path.exists(file_path):
-            chosen_file_path = file_path
-            break
-    if not chosen_file_path:
-        error.write("------no file found for {} ------\n".format(name))
-        return
-    logging.write("------extracting sequences from the given path {} ------\n".format(chosen_file_path))
-
-    seq_dict = io_manager.extract_dict(chosen_file_path)
-    pool = multiprocessing.Pool(kmer_statistics.core)
-    manager = multiprocessing.Manager()
-    if kmer_statistics.subtraction:
-        freq_list_return = [manager.dict() for _ in range(4)]  # use the same manager
-        function_to_call = kmer_freq_subtraction_update
-    else:
-        freq_list_return = [manager.dict()]
-        function_to_call = kmer_freq_update
-    all_tasks = []
-    segmentLen = 5000
-    for (seq_key, seq_value) in seq_dict.items():
-        for start_index in range(0, len(seq_value), segmentLen):
-            temp_seq = seq_value[max(0, start_index - kmer_statistics.k + 1): \
-                min(start_index + segmentLen, len(seq_value))]
-            all_tasks.append(temp_seq)
-    for i in range(kmer_statistics.core):
-        chosen_tasks = all_tasks[i::kmer_statistics.core]
-        pool.apply_async(function_to_call, 
-                        args=(freq_list_return, chosen_tasks, 
-                            kmer_statistics.k, kmer_statistics.space, 
-                            kmer_statistics.combine, kmer_statistics.loc))
-    pool.close()
-    pool.join()
-
-    
-
-    vector_frequency = vector_calculator(freq_list_return, kmer_statistics)
-
-    if kmer_statistics.subtraction:
-        logging.write("long dict: \n")
-        logging.write("{:<.50}...\n".format(str(freq_list_return[0])))
-        logging.write("mid dict 1: \n")
-        logging.write("{:<.50}...\n".format(str(freq_list_return[1])))
-        logging.write("mid dict 2: \n")
-        logging.write("{:<.50}...\n".format(str(freq_list_return[2])))
-        logging.write("short dict: \n")
-        logging.write("{:<.50}...\n".format(str(freq_list_return[3])))
-    else:
-        logging.write("{:<.50}...\n".format(str(freq_list_return[0])))
-
-    for item in vector_frequency[:min(4, len(vector_frequency))]:
-        logging.write("key: {0}\tencoded key: {1}\tvalue: {2}\n".format(
-            item[0], item[1], item[2]))
-
-    logging.write("------saving result for {}: ------\n".format(name))
-    io_manager.output_content(kmer_statistics, output_folder, vector_frequency, name)
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="A parser for KFC that accepts input from the user")
     parser.add_argument('--file_dir', type=str, required=True,
@@ -179,11 +116,68 @@ if __name__ == '__main__':
     check_parameters(args)
     print("------Arguments:------\n{}".format(args))
     logging.write("------ARGUMENTS:------\n{}\n".format(args))
-    kmer_tool = ArgumentManager(args)
+    kmer_statistics = ArgumentManager(args)
     for name in names:
         print("calculating {}".format(name))
         logging.write("CALCULATING {}\n".format(name.upper()))
-        calculate(name, output_folder, kmer_tool)
+        
+        all_file_path = [os.path.join(kmer_statistics.file_dir, "{}.{}".format(name, suffix)) for suffix in ["fa","fna","ffn","fsa","fasta"]]
+        chosen_file_path = None  # choose the first file that satisfies certain format
+        for file_path in all_file_path:
+            if os.path.exists(file_path):
+                chosen_file_path = file_path
+                break
+        if not chosen_file_path:
+            error.write("------no file found for {} ------\n".format(name))
+            exit(1)
+        logging.write("------extracting sequences from the given path {} ------\n".format(chosen_file_path))
+
+        seq_dict = io_manager.extract_dict(chosen_file_path)
+        pool = multiprocessing.Pool(kmer_statistics.core)
+        manager = multiprocessing.Manager()
+        if kmer_statistics.subtraction:
+            freq_list_return = [manager.dict() for _ in range(4)]  # use the same manager
+            function_to_call = kmer_freq_subtraction_update
+        else:
+            freq_list_return = [manager.dict()]
+            function_to_call = kmer_freq_update
+        all_tasks = []
+        segmentLen = 5000
+        for (seq_key, seq_value) in seq_dict.items():
+            for start_index in range(0, len(seq_value), segmentLen):
+                temp_seq = seq_value[max(0, start_index - kmer_statistics.k + 1): \
+                    min(start_index + segmentLen, len(seq_value))]
+                all_tasks.append(temp_seq)
+        for i in range(kmer_statistics.core):
+            chosen_tasks = all_tasks[i::kmer_statistics.core]
+            pool.apply_async(function_to_call, 
+                            args=(freq_list_return, chosen_tasks, 
+                                kmer_statistics.k, kmer_statistics.space, 
+                                kmer_statistics.combine, kmer_statistics.loc))
+        pool.close()
+        pool.join()
+
+        vector_frequency = vector_calculator(freq_list_return, kmer_statistics)
+
+        if kmer_statistics.subtraction:
+            logging.write("long dict: \n")
+            logging.write("{:<.50}...\n".format(str(freq_list_return[0])))
+            logging.write("mid dict 1: \n")
+            logging.write("{:<.50}...\n".format(str(freq_list_return[1])))
+            logging.write("mid dict 2: \n")
+            logging.write("{:<.50}...\n".format(str(freq_list_return[2])))
+            logging.write("short dict: \n")
+            logging.write("{:<.50}...\n".format(str(freq_list_return[3])))
+        else:
+            logging.write("{:<.50}...\n".format(str(freq_list_return[0])))
+
+        for item in vector_frequency[:min(4, len(vector_frequency))]:
+            logging.write("key: {0}\tencoded key: {1}\tvalue: {2}\n".format(
+                item[0], item[1], item[2]))
+
+        logging.write("------saving result for {}: ------\n".format(name))
+        io_manager.output_content(kmer_statistics, output_folder, vector_frequency, name)
+
         logging.write("\n")
     logging.close()
 
