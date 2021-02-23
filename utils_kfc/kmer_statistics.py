@@ -1,6 +1,3 @@
-from .encoder_decoder_old import EncoderDecoderOld
-from .encoder_decoder import EncoderDecoder
-
 
 def item_in_dict(d):
     return sum(d.values())
@@ -72,12 +69,12 @@ def vector_calculator(gross_f, kmer_statistics):
             for index, freq_count in enumerate(gross_f):
                 num_of_items = item_in_dict(freq_count)
                 for (k, v) in freq_count.items():
-                    probability[index][kmer_statistics.e_d.encoder(k)] = v / num_of_items
+                    probability[index][kmer_statistics.encoder(k)] = v / num_of_items
         else:
             # it will not the branch, because we require the use of frequency when using subtraction
             for index, freq_count in enumerate(gross_f):
                 for (k, v) in freq_count.items():
-                    probability[index][kmer_statistics.e_d.encoder(k)] = v
+                    probability[index][kmer_statistics.encoder(k)] = v
         for (k, v) in gross_f[3].items():
             for pre_ch in ["A", "C", "G", "T"]:
                 for after_ch in ["A", "C", "G", "T"]:
@@ -86,8 +83,8 @@ def vector_calculator(gross_f, kmer_statistics):
                     k_sub2 = get_smaller(k + after_ch)
                     k_sub3 = k
                     if gross_f[1][k_sub1] and gross_f[2][k_sub2]:
-                        encoded_0, encoded_1, encoded_2, encoded_3 = kmer_statistics.e_d.encoder(full_k), kmer_statistics.e_d.encoder(
-                            k_sub1), kmer_statistics.e_d.encoder(k_sub2), kmer_statistics.e_d.encoder(k_sub3)
+                        encoded_0, encoded_1, encoded_2, encoded_3 = kmer_statistics.encoder(full_k), kmer_statistics.encoder(
+                            k_sub1), kmer_statistics.encoder(k_sub2), kmer_statistics.encoder(k_sub3)
                         bgd[encoded_0] = probability[1][encoded_1] * probability[2][encoded_2] / probability[3][
                             encoded_3]
                         del_bgd[full_k] = ((full_k, encoded_0, probability[0].get(encoded_0, 0) / bgd[encoded_0] - 1))
@@ -99,10 +96,10 @@ def vector_calculator(gross_f, kmer_statistics):
         num_of_items = item_in_dict(gross_f[0])  # rename
         if kmer_statistics.frequency:
             for (k, v) in gross_f[0].items():
-                probability.append((k, kmer_statistics.e_d.encoder(k), v / num_of_items))
+                probability.append((k, kmer_statistics.encoder(k), v / num_of_items))
         else:
             for (k, v) in gross_f[0].items():
-                probability.append((k, kmer_statistics.e_d.encoder(k), v))
+                probability.append((k, kmer_statistics.encoder(k), v))
         probability.sort()
         return probability
 
@@ -126,9 +123,11 @@ class ArgumentManager:
         
         self.k = self.n + (self.n - 1) * self.d
         if self.new_encoder:
-            self.e_d = EncoderDecoder()
+            from .encoder_decoder_old import encoder, decoder
         else:
-            self.e_d = EncoderDecoderOld()
+            from .encoder_decoder import encoder, decoder
+        self.encoder = encoder
+        self.decoder = decoder
         self.loc = list(range(0, self.k, self.d + 1))  # the chosen positions when spaced
         self.loc[self.position] += self.direction
 

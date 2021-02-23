@@ -171,7 +171,6 @@ if __name__ == '__main__':
         pool.close()
         pool.join()
         freq_list_return = merge_counter(all_counter)
-        print(freq_list_return)
         
         vector_frequency = vector_calculator(freq_list_return, kmer_statistics)
 
