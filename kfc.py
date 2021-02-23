@@ -3,7 +3,9 @@ import os
 import multiprocessing
 from collections import Counter
 from utils_kfc import io_manager
-from utils_kfc.kmer_statistics import ArgumentManager, item_in_dict, reverse_complement, get_smaller, modify_sequence, no_deviation, vector_calculator
+from utils_kfc.kmer_statistics import ArgumentManager, item_in_dict, reverse_complement, get_smaller, modify_sequence, no_deviation
+from utils_kfc.vector_calculator import feature_vector
+
 
 def check_parameters(args):
     """
@@ -147,7 +149,6 @@ if __name__ == '__main__':
 
         seq_dict = io_manager.extract_dict(chosen_file_path)
         pool = multiprocessing.Pool(kmer_statistics.core)
-        manager = multiprocessing.Manager()
         if kmer_statistics.subtraction:
             function_to_call = kmer_freq_subtraction_update
         else:
@@ -172,7 +173,7 @@ if __name__ == '__main__':
         pool.join()
         freq_list_return = merge_counter(all_counter)
         
-        vector_frequency = vector_calculator(freq_list_return, kmer_statistics)
+        vector_frequency = feature_vector(freq_list_return, kmer_statistics)
 
         if kmer_statistics.subtraction:
             logging.write("long dict: \n")
