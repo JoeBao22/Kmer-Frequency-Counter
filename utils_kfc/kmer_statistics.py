@@ -3,10 +3,7 @@ from .encoder_decoder import EncoderDecoder
 
 
 def item_in_dict(d):
-    counter = 0
-    for v in d.values():
-        counter += v
-    return counter
+    return sum(d.values())
 
 
 def reverse_complement(s):
@@ -88,8 +85,7 @@ def vector_calculator(gross_f, kmer_statistics):
                     k_sub1 = get_smaller(pre_ch + k)
                     k_sub2 = get_smaller(k + after_ch)
                     k_sub3 = k
-                    if k_sub1 in gross_f[1].keys() and  \
-                        k_sub2 in gross_f[2].keys():
+                    if gross_f[1][k_sub1] and gross_f[2][k_sub2]:
                         encoded_0, encoded_1, encoded_2, encoded_3 = kmer_statistics.e_d.encoder(full_k), kmer_statistics.e_d.encoder(
                             k_sub1), kmer_statistics.e_d.encoder(k_sub2), kmer_statistics.e_d.encoder(k_sub3)
                         bgd[encoded_0] = probability[1][encoded_1] * probability[2][encoded_2] / probability[3][
