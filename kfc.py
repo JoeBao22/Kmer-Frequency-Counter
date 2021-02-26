@@ -85,12 +85,25 @@ def kmer_freq_subtraction_update(seq_list, k, space, combine, loc):
     return counter_list
     
     
-def merge_counter(all_res_list):
+def sum_counter(counter_list):
+    summed = Counter()
+    for counter in counter_list:
+        summed += counter
+    return summed
+
+def merge_counter(all_res_list, core):
     all_counter_list = [res.get() for res in all_res_list]
     num_of_counter = len(all_counter_list[0])
     merged_counter = []
     for i in range(num_of_counter):
-        merged_counter.append(sum([item[i] for item in all_counter_list], Counter()))
+        res = []
+        pool =  multiprocessing.Pool(core)
+        for c in range(core):
+            chosen_counter = [all_counter_list[j][i] for j in range(c, len(all_counter_list), core)]
+            res.append(pool.apply_async(sum_counter, args=(chosen_counter, ))) 
+        pool.close()
+        pool.join()
+        merged_counter.append(sum([item.get() for item in res], Counter()))
     return merged_counter
     
 
@@ -171,7 +184,7 @@ if __name__ == '__main__':
             )
         pool.close()
         pool.join()
-        freq_list_return = merge_counter(all_counter)
+        freq_list_return = merge_counter(all_counter, kmer_statistics.core)
         
         vector_frequency = feature_vector(freq_list_return, kmer_statistics)
 
