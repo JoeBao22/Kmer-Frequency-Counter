@@ -43,6 +43,8 @@ def no_deviation(kmer):
     """
     return kmer.count('A') + kmer.count('T') + kmer.count('C') + kmer.count('G') == len(kmer)
 
+
+
 def vector_calculator(gross_f, kmer_statistics):
     """
     given the original copy number, generate a list of frequency or copy number. Use subtraction or not
