@@ -1,5 +1,5 @@
 from utils_kfc.kmer_statistics import get_smaller, item_in_dict
-from multiprocessing import Pool
+from multiprocessing import Pool, Manager
 from functools import partial
 
 
@@ -12,14 +12,20 @@ def encoded_list_freq(item, num_of_items, encoder):
     k, v = item
     return (k, encoder(k), v / num_of_items)
     
+
+def subtraction_counter_task(counter, encoder):
+    probability = {}
+    num_of_items = item_in_dict(counter)
+    for (k, v) in counter.items():
+        probability[encoder(k)] = v / num_of_items
+    return probability
+    
 def feature_vector(gross_f, kmer_statistics):
     """
     given the original copy number, generate a list of frequency or copy number. Use subtraction or not
     :param gross_f: {key: value}
     :return: [(key:str, encoded_key: int, value: number)]
     """
-
-    
     if kmer_statistics.subtraction:
         # for str s, we get substrings:
         # s1 = s[:-1] (remove the last character)
@@ -32,14 +38,21 @@ def feature_vector(gross_f, kmer_statistics):
         # we define the frequency with respect to background as :
         # del_bgd(s) = freq(s) / bgd(s) - 1
         # we will record the frequency of s as long as: s[1: ] in mid_dict
-        probability = [{} for _ in range(4)]
+        manager = Manager()
+        probability_res = []
+        shared_f = [manager.dict(item) for item in gross_f]
         bgd = {}
         del_bgd = {}
         assert kmer_statistics.frequency
-        for index, freq_count in enumerate(gross_f):
-            num_of_items = item_in_dict(freq_count)
-            for (k, v) in freq_count.items():
-                probability[index][kmer_statistics.encoder(k)] = v / num_of_items
+        pool =  Pool(kmer_statistics.core) 
+        for index, freq_count in enumerate(shared_f):
+            probability_res.append(pool.apply_async(subtraction_counter_task, 
+                            args=(freq_count, 
+                            kmer_statistics.encoder)))
+        pool.close()
+        pool.join()
+        probability = [item.get() for item in probability_res]
+
         for (k, v) in gross_f[3].items():
             for pre_ch in ["A", "C", "G", "T"]:
                 for after_ch in ["A", "C", "G", "T"]:
@@ -50,9 +63,9 @@ def feature_vector(gross_f, kmer_statistics):
                     if gross_f[1][k_sub1] and gross_f[2][k_sub2]:
                         encoded_0, encoded_1, encoded_2, encoded_3 = kmer_statistics.encoder(full_k), kmer_statistics.encoder(
                             k_sub1), kmer_statistics.encoder(k_sub2), kmer_statistics.encoder(k_sub3)
-                        bgd[encoded_0] = probability[1][encoded_1] * probability[2][encoded_2] / probability[3][
+                        bgd = probability[1][encoded_1] * probability[2][encoded_2] / probability[3][
                             encoded_3]
-                        del_bgd[full_k] = ((full_k, encoded_0, probability[0].get(encoded_0, 0) / bgd[encoded_0] - 1))
+                        del_bgd[full_k] = ((full_k, encoded_0, probability[0].get(encoded_0, 0) / bgd - 1))
         del_bgd_list = sorted(list(del_bgd.values()))
         return del_bgd_list
 
