@@ -1,4 +1,4 @@
-import argparse
+import argparse,time
 import os
 import multiprocessing
 from collections import Counter
@@ -48,40 +48,38 @@ def check_parameters(args):
         exit(1)
 
 
-def kmer_freq_update(seq_list, k, space, combine, loc):
+def kmer_freq_update(seq, k, space, combine, loc):
     counter_list = [Counter()]
-    for seq in seq_list:
-        modified_seq_value = modify_sequence(seq)
-        for start_index in range(len(modified_seq_value) - k + 1):
-            sub_seq = modified_seq_value[start_index: start_index + k]
-            if space:
-                sub_seq = ''.join([sub_seq[x] for x in loc])
-            if combine:
-                sub_seq = get_smaller(sub_seq)
-            if no_deviation(sub_seq):
-                counter_list[0][sub_seq] += 1
+    modified_seq_value = modify_sequence(seq)
+    for start_index in range(len(modified_seq_value) - k + 1):
+        sub_seq = modified_seq_value[start_index: start_index + k]
+        if space:
+            sub_seq = ''.join([sub_seq[x] for x in loc])
+        if combine:
+            sub_seq = get_smaller(sub_seq)
+        if no_deviation(sub_seq):
+            counter_list[0][sub_seq] += 1
     return counter_list
 
 
-def kmer_freq_subtraction_update(seq_list, k, space, combine, loc):
+def kmer_freq_subtraction_update(seq, k, space, combine, loc):
     counter_list = [Counter() for _ in range(4)]
-    for seq in seq_list:
-        modified_seq_value = modify_sequence(seq)
-        for start_index in range(len(modified_seq_value) - k + 1):
-            sub_seq = modified_seq_value[start_index: start_index + k]
-            if space:
-                sub_seq = ''.join([sub_seq[x] for x in loc])
-            if no_deviation(sub_seq):
-                mid_seq1, mid_seq2 = sub_seq[: -1], sub_seq[1: ]
-                short_seq = sub_seq[1:-1]
-                if combine:
-                    sub_seq = get_smaller(sub_seq)
-                    mid_seq1 = get_smaller(mid_seq1)
-                    mid_seq2 = get_smaller(mid_seq2)
-                    short_seq = get_smaller(short_seq)
-                seq_list = [sub_seq, mid_seq1, mid_seq2, short_seq]
-                for i in range(4):
-                    counter_list[i][seq_list[i]] += 1
+    modified_seq_value = modify_sequence(seq)
+    for start_index in range(len(modified_seq_value) - k + 1):
+        sub_seq = modified_seq_value[start_index: start_index + k]
+        if space:
+            sub_seq = ''.join([sub_seq[x] for x in loc])
+        if no_deviation(sub_seq):
+            mid_seq1, mid_seq2 = sub_seq[: -1], sub_seq[1: ]
+            short_seq = sub_seq[1:-1]
+            if combine:
+                sub_seq = get_smaller(sub_seq)
+                mid_seq1 = get_smaller(mid_seq1)
+                mid_seq2 = get_smaller(mid_seq2)
+                short_seq = get_smaller(short_seq)
+            seq_list = [sub_seq, mid_seq1, mid_seq2, short_seq]
+            for i in range(4):
+                counter_list[i][seq_list[i]] += 1
     return counter_list
     
     
@@ -139,6 +137,7 @@ if __name__ == '__main__':
                             "if position = 5 and direction = 1:"
                             "shifted: 1, 3, 6, 7, 9")
 
+    t = time.time()
     args = parser.parse_args()
     names, output_folder, logging, error = io_manager.output_error_logging_config(args)
     check_parameters(args)
@@ -168,25 +167,30 @@ if __name__ == '__main__':
             function_to_call = kmer_freq_update
         all_tasks = []
         all_counter = []
-        segmentLen = 5000
+        segmentLen = 50000
         for (seq_key, seq_value) in seq_dict.items():
             for start_index in range(0, len(seq_value), segmentLen):
                 temp_seq = seq_value[max(0, start_index - kmer_statistics.k + 1): \
                     min(start_index + segmentLen, len(seq_value))]
                 all_tasks.append(temp_seq)
-        for i in range(kmer_statistics.core):
-            chosen_tasks = all_tasks[i::kmer_statistics.core]
+        for task in all_tasks:
             all_counter.append(
                 pool.apply_async(function_to_call, 
-                            args=(chosen_tasks, 
+                            args=( 
                                 kmer_statistics.k, kmer_statistics.space, 
                                 kmer_statistics.combine, kmer_statistics.loc))
             )
         pool.close()
         pool.join()
+        print('input kmer dict finished!',time.time()-t)
+        t=time.time()
         freq_list_return = merge_counter(all_counter, kmer_statistics.core)
+        print('merge counter finished!',time.time()-t)
+        t=time.time()
         
         vector_frequency = feature_vector(freq_list_return, kmer_statistics)
+        print('calculate vector frequency finished!',time.time()-t)
+        t=time.time()
 
         if kmer_statistics.subtraction:
             logging.write("long dict: \n")
@@ -210,3 +214,4 @@ if __name__ == '__main__':
         logging.write("\n")
     logging.close()
 
+    exit(time.time()-t)
