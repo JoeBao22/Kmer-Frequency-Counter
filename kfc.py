@@ -176,7 +176,7 @@ if __name__ == '__main__':
         for task in all_tasks:
             all_counter.append(
                 pool.apply_async(function_to_call, 
-                            args=( 
+                            args=(task,
                                 kmer_statistics.k, kmer_statistics.space, 
                                 kmer_statistics.combine, kmer_statistics.loc))
             )
