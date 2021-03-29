@@ -1,4 +1,7 @@
 K*
+Mode*
+test.py
+compare_files.py
 *.txt
 # Byte-compiled / optimized / DLL files
 __pycache__/

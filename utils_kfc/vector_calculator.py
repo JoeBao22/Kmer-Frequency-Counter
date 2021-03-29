@@ -1,7 +1,7 @@
-from utils_kfc.kmer_statistics import get_smaller, item_in_dict
+from utils_kfc.kmer_statistics import get_smaller, item_in_dict, reverse_complement
 from multiprocessing import Pool, Manager, Process, Queue
 from functools import partial
-import itertools
+import itertools, time
 
 def encoded_list(item, encoder):
     k, v = item
@@ -13,29 +13,41 @@ def encoded_list_freq(item, num_of_items, encoder):
     return (k, encoder(k), v / num_of_items)
     
 
-def subtraction_counter_task(queue, ks, all_counter, kmer_statistics):
+def subtraction_counter_task(ks, all_counter, kmer_statistics, core_index):
+    del_bgd = []
+    filters = [("T", "A"), ("T", "C"), ("T", "G"), ("T", "T"),
+            ("G", "T"), ("G", "G"), ("G", "C"), ("C", "T")]
     for k in ks:
         for pre_ch in ["A", "C", "G", "T"]:
             for after_ch in ["A", "C", "G", "T"]:
+                if k == reverse_complement(k) and (pre_ch, after_ch) in filters:
+                    continue
                 if kmer_statistics.combine:
                     full_k = get_smaller(pre_ch + k + after_ch)
+                    k_sub1 = get_smaller(full_k[:-1])
+                    if not all_counter[1][k_sub1]:
+                        continue
+                    k_sub2 = get_smaller(full_k[1:])
+                    if not all_counter[2][k_sub2]:
+                        continue
                 else:
                     full_k = pre_ch + k + after_ch
-                k_sub1 = get_smaller(full_k[:-1])
-                if not all_counter[1][k_sub1]:
-                    continue
-                k_sub2 = get_smaller(full_k[1:])
-                if not all_counter[2][k_sub2]:
-                    continue
+                    k_sub1 = full_k[:-1]
+                    if not all_counter[1][k_sub1]:
+                        continue
+                    k_sub2 = full_k[1:]
+                    if not all_counter[2][k_sub2]:
+                        continue
                 if not all_counter[0][full_k]:
                     prob = -1
                 else:
                     prob = (all_counter[0][full_k] * all_counter[3][k]) / \
                     (all_counter[1][k_sub1] * all_counter[2][k_sub2]) - 1
                 encoded = kmer_statistics.encoder(full_k)
-                queue.put((full_k, encoded, prob))
-    
-def feature_vector(all_counter, kmer_statistics):
+                del_bgd.append((full_k, encoded, prob))
+    return del_bgd 
+
+def feature_vector(all_counter, kmer_statistics, t):
     """
     given the original copy number, generate a list of frequency or copy number. Use subtraction or not
     :param gross_f: a list of counters
@@ -63,32 +75,36 @@ def feature_vector(all_counter, kmer_statistics):
         #     iterator_p = pool.imap_unordered(task, all_counter[3].keys(), chunksize=5000)
         #     del_bgd = list(itertools.chain(*iterator_p))  # flatten a list of list
         #     return del_bgd
-        queue = Queue()
-        all_process = []
+        pool = Pool(kmer_statistics.core)
+        all_counter_2 = []
         all_keys = list(all_counter[3].keys())
-        keys_each = len(all_keys) // kmer_statistics.core
+        keys_each = len(all_keys) // (kmer_statistics.core)
+        all_tasks = []
         for core_index in range(kmer_statistics.core):
             if core_index == kmer_statistics.core - 1:
                 temp_keys = all_keys[core_index * keys_each:]
             else:
                 temp_keys = all_keys[core_index * keys_each: (core_index+ 1) * keys_each]
-            process = Process(target=subtraction_counter_task, args=(queue, temp_keys, all_counter, kmer_statistics))
-            process.start()
-            all_process.append(process)
-        for process in all_process:
-            process.join()
+            all_tasks.append(temp_keys)
+        for task in all_tasks:
+            all_counter_2.append(pool.apply_async(subtraction_counter_task, args=(task, all_counter, kmer_statistics, core_index)) )
+        pool.close()
+        pool.join()
+
         del_bgd = []
-        while not queue.empty():
-            del_bgd.append(queue.get())
+        for i in all_counter_2:
+            del_bgd = del_bgd + i.get()
+        del_bgd.sort()
+        
         return del_bgd
     else:
         num_of_items = item_in_dict(all_counter[0])  # rename
         with Pool(kmer_statistics.core) as pool:
             if kmer_statistics.frequency:
-                partial_res = partial(encoded_list,  encoder=kmer_statistics.encoder)
+                partial_res = partial(encoded_list_freq, num_of_items=num_of_items, encoder=kmer_statistics.encoder)
                 iterator_p = pool.imap_unordered(partial_res, all_counter[0].items(), chunksize=5000)
             else:
-                partial_res = partial(encoded_list_freq, num_of_items=num_of_items, encoder=kmer_statistics.encoder)
+                partial_res = partial(encoded_list,  encoder=kmer_statistics.encoder)
                 iterator_p = pool.imap_unordered(partial_res, all_counter[0].items(), chunksize=5000)
             probability = sorted(list(iterator_p))
             return probability

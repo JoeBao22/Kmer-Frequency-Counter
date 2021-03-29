@@ -92,11 +92,14 @@ def output_error_logging_config(args):
 
 def output_content(args, output_folder, frequency, species_name):
     # Output as a format of cvtree
-    count_none_zero = len(frequency)
+    count_none_zero = 0
     inner_product = sum([item[2] ** 2 for item in frequency])  # item[2]: value
-    content = "{}\n{}\n{}\n".format(args.n, inner_product, count_none_zero)
+    content = ""
     for item in frequency:
-        content += "{} {}\n".format(item[1], item[2])  # item[1]: key, item[2]: value
+        if item[2] != 0.:  
+            count_none_zero += 1
+            content += "{} {}\n".format(item[1], item[2])  # item[1]: key, item[2]: value
+    title = "{}\n{}\n{}\n".format(args.n, inner_product, count_none_zero)
     create_dir(output_folder)
     filename_species = "{}.cv.txt".format(species_name)
-    open(os.path.join(output_folder, filename_species), 'w').write(content)
+    open(os.path.join(output_folder, filename_species), 'w').write(title + content)

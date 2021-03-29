@@ -70,10 +70,11 @@ def kmer_freq_subtraction_update(seq, k, space, combine, loc):
         if space:
             sub_seq = ''.join([sub_seq[x] for x in loc])
         if no_deviation(sub_seq):
+            if combine:
+                sub_seq = get_smaller(sub_seq)
             mid_seq1, mid_seq2 = sub_seq[: -1], sub_seq[1: ]
             short_seq = sub_seq[1:-1]
             if combine:
-                sub_seq = get_smaller(sub_seq)
                 mid_seq1 = get_smaller(mid_seq1)
                 mid_seq2 = get_smaller(mid_seq2)
                 short_seq = get_smaller(short_seq)
@@ -105,7 +106,7 @@ def merge_counter(all_res_list, core):
     return merged_counter
     
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description="A parser for KFC that accepts input from the user")
     parser.add_argument('--file_dir', type=str, required=True,
                         help="the directory that contains all the dna-sequence files")
@@ -168,6 +169,7 @@ if __name__ == '__main__':
         all_tasks = []
         all_counter = []
         segmentLen = 50000
+        # the ACTUAL segmentLen will be segmentLen + k - 1 because of overlapping.
         for (seq_key, seq_value) in seq_dict.items():
             for start_index in range(0, len(seq_value), segmentLen):
                 temp_seq = seq_value[max(0, start_index - kmer_statistics.k + 1): \
@@ -188,7 +190,7 @@ if __name__ == '__main__':
         print('merge counter finished!',time.time()-t)
         t=time.time()
         
-        vector_frequency = feature_vector(freq_list_return, kmer_statistics)
+        vector_frequency = feature_vector(freq_list_return, kmer_statistics,t)
         print('calculate vector frequency finished!',time.time()-t)
         t=time.time()
 
@@ -215,3 +217,7 @@ if __name__ == '__main__':
     logging.close()
 
     exit(time.time()-t)
+    
+    
+if __name__ == '__main__':
+    main()
