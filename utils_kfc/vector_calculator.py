@@ -13,6 +13,12 @@ def encoded_list_freq(item, num_of_items, encoder):
     return (k, encoder(k), v / num_of_items)
     
 
+def encoded_list_use_fastq(item, encoder):
+    k, v = item
+    grouped_value_list = ["{}-{}-{}".format(x[0], x[1], x[2]) for x in v]
+    # grouped_value = ",".join(map(lambda x: "{}-{}-{}".format(x[0], x[1], x[2]), v))
+    return (k, encoder(k), len(v), ",".join(grouped_value_list))
+
 def subtraction_counter_task(ks, all_counter, kmer_statistics, core_index):
     del_bgd = []
     filters = [("T", "A"), ("T", "C"), ("T", "G"), ("T", "T"),
@@ -47,7 +53,7 @@ def subtraction_counter_task(ks, all_counter, kmer_statistics, core_index):
                 del_bgd.append((full_k, encoded, prob))
     return del_bgd 
 
-def feature_vector(all_counter, kmer_statistics, t):
+def feature_vector(all_counter, kmer_statistics):
     """
     given the original copy number, generate a list of frequency or copy number. Use subtraction or not
     :param gross_f: a list of counters

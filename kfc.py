@@ -46,6 +46,21 @@ def check_parameters(args):
         error.write("length must be greater or equal to 3 when using subtraction\n")
         print("length must be greater or equal to 3 when using subtraction")
         exit(1)
+    if args.use_fastq and (args.frequency):
+        error.write("can not use subtraction when the input is *.fastq\n")
+        print("can not use subtraction when the input is *.fastq")
+        exit(1)
+
+
+# def kmer_freq_update_fastq(seq_info_list, k):
+#     record_dict = {}
+#     for seq_info in seq_info_list:
+#         file_num, line_num, seq = seq_info
+#         for start_index in range(len(seq) - k + 1):
+#             sub_seq = seq[start_index: start_index + k]
+#             if no_deviation(sub_seq):
+#                 record_dict[sub_seq] = record_dict.get(sub_seq, []) + [(file_num, line_num, start_index)]
+#     return record_dict
 
 
 def kmer_freq_update(seq, k, space, combine, loc):
@@ -92,18 +107,34 @@ def sum_counter(counter_list):
 
 def merge_counter(all_res_list, core):
     all_counter_list = [res.get() for res in all_res_list]
+    print(len(all_counter_list))
     num_of_counter = len(all_counter_list[0])
+    print("num of counter", num_of_counter)
     merged_counter = []
     for i in range(num_of_counter):
         res = []
         pool =  multiprocessing.Pool(core)
         for c in range(core):
             chosen_counter = [all_counter_list[j][i] for j in range(c, len(all_counter_list), core)]
+            # start_index = c * (len(all_counter_list) // core)
+            # end_index = c *  min(len(all_counter_list) // core + 1, len(all_counter_list))
+            # chosen_counter = [all_counter_list[j][i] for j in range(start_index, end_index)]
             res.append(pool.apply_async(sum_counter, args=(chosen_counter, ))) 
         pool.close()
         pool.join()
         merged_counter.append(sum([item.get() for item in res], Counter()))
     return merged_counter
+    
+def merge_record(all_record_list):
+    print(all_record_list)
+    all_record_dict = [res.get() for res in all_record_list]
+    merged_record = {}
+    for record in all_record_dict:
+        # print(record)
+        for k, v in record.items():
+            merged_record[k] = merged_record.get(k, []) + v
+    print(merged_record)
+    return merged_record
     
 
 def main():
@@ -137,6 +168,8 @@ def main():
                             "eg: 1, 2, 3, 4...9 ; sampled: 1, 3, 5, 7, 9"
                             "if position = 5 and direction = 1:"
                             "shifted: 1, 3, 6, 7, 9")
+    parser.add_argument('--use_fastq', action="store_true",
+                        help="whether the input files are in the format of fastq")
 
     t = time.time()
     args = parser.parse_args()
@@ -148,50 +181,70 @@ def main():
     for name in names:
         print("calculating {}".format(name))
         logging.write("CALCULATING {}\n".format(name.upper()))
-        
-        all_file_path = [os.path.join(kmer_statistics.file_dir, "{}.{}".format(name, suffix)) for suffix in ["fa","fna","ffn","fsa","fasta"]]
-        chosen_file_path = None  # choose the first file that satisfies certain format
-        for file_path in all_file_path:
-            if os.path.exists(file_path):
-                chosen_file_path = file_path
-                break
-        if not chosen_file_path:
-            error.write("------no file found for {} ------\n".format(name))
-            exit(1)
-        logging.write("------extracting sequences from the given path {} ------\n".format(chosen_file_path))
+        if kmer_statistics.use_fastq:
+            suffix = "fq"
+            file_path_upstream = os.path.join(kmer_statistics.file_dir, "{}_{}.{}".format(name, "R1", suffix))
+            if not os.path.exists(file_path_upstream):
+                error.write("------upstream file not found for {} ------\n".format(name))
+                error.write("the upstream file should be like 'apple_R1.fq', if the species name is 'apple'")
+            file_path_downstream = os.path.join(kmer_statistics.file_dir, "{}_{}.{}".format(name, "R2", suffix))
+            if not os.path.exists(file_path_downstream):
+                error.write("------downstream file not found for {} ------\n".format(name))
+                error.write("the downstream file should be like 'apple_R2.fq', if the species name is 'apple'")
+            logging.write("------extracting sequences from path {} and path {} ------\n".format(
+                file_path_upstream, file_path_downstream))
+            seq_list = io_manager.extract_fastq(file_path_upstream, file_path_downstream)
+        else:
+            all_file_path = [os.path.join(kmer_statistics.file_dir, "{}.{}".format(name, suffix)) for suffix in ["fa","fna","ffn","fsa","fasta"]]
+            chosen_file_path = None  # choose the first file that satisfies certain format
+            for file_path in all_file_path:
+                if os.path.exists(file_path):
+                    chosen_file_path = file_path
+                    break
+            if not chosen_file_path:
+                error.write("------no file found for {} ------\n".format(name))
+                exit(1)
+            logging.write("------extracting sequences from the given path {} ------\n".format(chosen_file_path))
 
-        seq_dict = io_manager.extract_dict(chosen_file_path)
+            seq_list = io_manager.extract_fasta(chosen_file_path)
+            
+        # print("seq_list", seq_list)
         pool = multiprocessing.Pool(kmer_statistics.core)
         if kmer_statistics.subtraction:
             function_to_call = kmer_freq_subtraction_update
         else:
             function_to_call = kmer_freq_update
+        segmentation_len = 5000
+        # the ACTUAL segmentLen will be segmentLen + k - 1 because of overlapping.
         all_tasks = []
         all_counter = []
-        segmentLen = 50000
-        # the ACTUAL segmentLen will be segmentLen + k - 1 because of overlapping.
-        for (seq_key, seq_value) in seq_dict.items():
-            for start_index in range(0, len(seq_value), segmentLen):
+        for seq_value in seq_list:
+            for start_index in range(0, len(seq_value), segmentation_len):
                 temp_seq = seq_value[max(0, start_index - kmer_statistics.k + 1): \
-                    min(start_index + segmentLen, len(seq_value))]
+                    min(start_index + segmentation_len, len(seq_value))]
                 all_tasks.append(temp_seq)
+        # print("all tasks:", all_tasks)
         for task in all_tasks:
             all_counter.append(
-                pool.apply_async(function_to_call, 
-                            args=(task,
-                                kmer_statistics.k, kmer_statistics.space, 
-                                kmer_statistics.combine, kmer_statistics.loc))
-            )
+                    pool.apply_async(function_to_call, 
+                                args=(task,
+                                    kmer_statistics.k, kmer_statistics.space, 
+                                    kmer_statistics.combine, kmer_statistics.loc))
+                )
         pool.close()
         pool.join()
         print('input kmer dict finished!',time.time()-t)
+        logging.write('input kmer dict finished!' + str(time.time()-t) + "\n")
         t=time.time()
+
         freq_list_return = merge_counter(all_counter, kmer_statistics.core)
         print('merge counter finished!',time.time()-t)
+        
+        logging.write('merge counter finished!' + str(time.time()-t) + "\n")
         t=time.time()
         
-        vector_frequency = feature_vector(freq_list_return, kmer_statistics,t)
-        print('calculate vector frequency finished!',time.time()-t)
+        vector_frequency = feature_vector(freq_list_return, kmer_statistics)
+        print('calculate vector frequency finished!' + str(time.time()-t) + "\n")
         t=time.time()
 
         if kmer_statistics.subtraction:
@@ -214,6 +267,8 @@ def main():
         io_manager.output_content(kmer_statistics, output_folder, vector_frequency, name)
 
         logging.write("\n")
+        print('all finished!',time.time()-t)
+        logging.write('all finished!'+ str(time.time()-t) + "\n")
     logging.close()
 
     exit(time.time()-t)

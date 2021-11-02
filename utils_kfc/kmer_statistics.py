@@ -60,6 +60,7 @@ class ArgumentManager:
         self.position = args.position - 1
         self.space = args.space
         self.subtraction = args.subtraction
+        self.use_fastq = args.use_fastq
         
         self.k = self.n + (self.n - 1) * self.d
         if self.new_encoder:
